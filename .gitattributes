@@ -1,0 +1,2 @@
+ngs_reporting_asset_builder/resources/reference_data/hg19/ filter=lfs diff=lfs merge=lfs -text
+ngs_reporting_asset_builder/resources/reference_data/hg38/ filter=lfs diff=lfs merge=lfs -text

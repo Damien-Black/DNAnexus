@@ -1,0 +1,14 @@
+genomes:
+  hg19:
+    seq:              hg19/hg19-chr21.fa
+    bwa:              hg19/hg19-chr21.fa
+
+    dbsnp:            hg19/dbsnp-147.chr21.vcf.gz
+    dbsnp_multi_mafs: hg19/dbSNP_multi_mafs_v147.chr21.txt.gz
+    clinvar:          hg19/clinvar.chr21.vcf.gz
+    cosmic:           hg19/CosmicCodingMuts_v79.chr21.vcf.gz
+
+  hg38:
+    all_transcripts:  hg38/ref-transcripts.cancer.trx.gtf.gz
+
+threads: 2

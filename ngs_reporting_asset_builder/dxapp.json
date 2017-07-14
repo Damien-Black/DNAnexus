@@ -1,0 +1,31 @@
+{
+  "name": "ngs_reporting_asset_builder",
+  "dxapi": "1.0.0",
+  "inputSpec": [],
+  "outputSpec": [],
+  "resources": [],
+  "runSpec": {
+    "systemRequirementsByRegion": {
+      "aws:us-east-1": {
+        "*": {
+          "instanceType": "mem1_ssd1_x2"
+        }
+      }
+    },
+    "systemRequirements": {
+      "*": {
+        "instanceType": "mem1_ssd1_x2"
+      }
+    },
+    "file": "src/code.py",
+    "release": "14.04",
+    "interpreter": "python2.7",
+    "distribution": "Ubuntu"
+  },
+  "access": {
+    "project": "UPLOAD",
+    "network": [
+      "*"
+    ]
+  }
+}
