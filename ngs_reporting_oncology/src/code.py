@@ -20,6 +20,7 @@ import time
 import glob
 
 OPT_CMD = {
+    # 'sys_info_yaml': '--sys-cfg {param}',
 }
 
 PATTERN_MAPPING = {
@@ -41,6 +42,7 @@ def download_job_inputs(input_dict):
                 return dxmatch(dx_id)
     for inp_name, val in input_dict.iteritems():
         f_dx = create_dx_data_obj(val)
+        print("f_dx: " + str(f_dx))
         if f_dx is not None:
             f_path = f_dx.name
             dxpy.download_dxfile(f_dx, f_path)
@@ -48,9 +50,10 @@ def download_job_inputs(input_dict):
                 "dxFileObj": f_dx,
                 "filePath": f_path
             }
+    return input_dict
 
 
-def create_cmd_opt_str(updated_input_dict):
+def get_opts(updated_input_dict):
     """Create shell string for subrocess usage"""
     cmd_opt = []
     for inp, val in updated_input_dict.iteritems():
@@ -59,7 +62,7 @@ def create_cmd_opt_str(updated_input_dict):
             continue
         param = val.get('filePath') if type(val) is dict else val
         cmd_opt.append(opt_str.format(param=param))
-    return " ".join(cmd_opt)
+    return cmd_opt
 
 
 @dxpy.entry_point('main')
@@ -68,24 +71,26 @@ def main(**job_inputs):
     # data_dir = os.path.join(os.path.expanduser('~'), 'Data')
     # os.mkdir(data_dir)
     # Download inputs
-    download_job_inputs(job_inputs)
+    run_cmdl = ['source', '/miniconda/bin/activate', 'ngs_reporting', '&&',
+                'bcbio_postproc', '-d', '--sys-cfg', '/miniconda/reference_data/system_info_Nexus_Test.yaml']
 
-    bcbio_postproc_cmd = [
-        'source', '/miniconda/bin/activate', 'ngs_reporting', '&&',
-        'bcbio_postproc', '-d', '--sys-cfg', '/miniconda/reference_data/system_info_Nexus_Test.yaml']
+    print("job_inputs: " + str(job_inputs))
+    job_inputs = download_job_inputs(job_inputs)
+    print("updated job_inputs: " + str(job_inputs))
+    run_cmdl.extend(get_opts(job_inputs))
 
     bcbio_yaml = job_inputs['bcbio_yaml']['filePath']
     print('Bcbio yaml:', bcbio_yaml)
     bcbio_dir = os.path.dirname(os.path.dirname(bcbio_yaml))
     print('Bcbio directory:', bcbio_dir)
-    run_cmdl = 'bcbio_postproc -d ' + create_cmd_opt_str(job_inputs)
-    run_cmdl += ' ' + bcbio_dir
+    run_cmdl.append(bcbio_dir)
 
-    print('Runing post-processing with the command: "' + run_cmdl + '"')
-    subprocess.check_call(run_cmdl.split())
+    print('Runing post-processing with the command: "' + " ".join(run_cmdl) + '"')
+    subprocess.check_call(run_cmdl)
 
     # Output files
     output = {}
+    from ngs_utils.bcbio import BcbioProject
     bcbio_proj = BcbioProject()
     bcbio_proj.load_from_bcbio_dir(bcbio_dir)
     report_path = bcbio_proj.find_multiqc_report()
