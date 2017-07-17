@@ -109,12 +109,18 @@ def main(**job_inputs):
     print("updated job_inputs: " + str(job_inputs))
     postproc_cmdl.extend(get_opts(job_inputs))
 
-    bcbio_tar = job_inputs['bcbio_tar']['filePath']
-    print('Bcbio tar:', bcbio_tar)
-    cmdl = ['tar', '-xvf', bcbio_tar]
-    print('Extracting: ' + ' '.join(cmdl))
-    subprocess.check_call(cmdl)
-    bcbio_dir = bcbio_tar.replace('.tar.gz', '').replace('.tar', '')
+    bcbio_dir = job_inputs['bcbio_dir']
+    if not bcbio_dir.startswith('/'):
+        bcbio_dir = '/' + bcbio_dir
+    print('Calling download_platform_folder_with_exclusion')
+    copy_folder_to_proj(src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], src_proj_fld=bcbio_dir, target_fld_prefix='')
+
+    # bcbio_tar = job_inputs['bcbio_tar']['filePath']
+    # print('Bcbio tar:', bcbio_tar)
+    # cmdl = ['tar', '-xvf', bcbio_tar]
+    # print('Extracting: ' + ' '.join(cmdl))
+    # subprocess.check_call(cmdl)
+    # bcbio_dir = bcbio_tar.replace('.tar.gz', '').replace('.tar', '')
     print('Bcbio directory:', bcbio_dir)
     postproc_cmdl.append(bcbio_dir)
 
@@ -122,15 +128,81 @@ def main(**job_inputs):
     subprocess.check_call(postproc_cmdl)
 
     # Output files
-    output = {}
-    report_paths = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html"))
-    if not report_paths:
-        print('Error: report.html not found for project ' + bcbio_dir)
-    else:
-        report_path = report_paths[0]
-        output['html_report'] = dxpy.dxlink(dxpy.upload_local_file(report_path))
+    report_file_links = []
+    print('Output files to expose:')
+    for item_path in (
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html")) + 
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "reports", "*.html")) + 
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.txt"))):
+        print(item_path)
+        if os.path.isfile(item_path):
+            report_file_links.append(
+                dxpy.dxlink(dxpy.upload_local_file(
+                    filename=item_path,
+                    folder=bcbio_dir,  # you can reuse bcbio_output_dir_on_local here to mimic structure
+                    parents=True))) # again parent just makes fodlers if they arent there
+
+    output = {'report_files': report_file_links}
+
+    # report_paths = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html"))
+    # if not report_paths:
+    #     print('Error: report.html not found for project ' + bcbio_dir)
+    # else:
+    #     report_path = report_paths[0]
+    #     output['html_report'] = dxpy.dxlink(dxpy.upload_local_file(report_path))
 
     return output
+
+
+def copy_folder_to_proj(src_proj, target_proj=None, src_proj_fld=None, target_fld_prefix=None, exclude_func=None):
+    """Copies folder from src_proj to target_proj under target_proj_fld_prefix
+    Args:
+            target_proj: Destination project. If not specified local machine is assumed.
+            src_proj_fld: Source folder to copy from. If None, project root is assumed.
+            target_fld_prefix: Prefix to prepend to copied folders. Defaults to Root if not specified
+            exclude_func: func that is passed the describe results of a dxobject and returns a boolean.
+                True - file is copied, False - Not copied over.
+    """
+    def transfer_to_project(file_id, file_dxpath, file_name):
+        f_dx = dxpy.DXFile(file_id, project=src_proj)
+        prefix = "/" if target_fld_prefix is None else target_fld_prefix
+        file_dxpath = os.path.join(prefix, file_dxpath)
+        file_platform_url = f_dx.get_download_url(duration=3600, preauthenticated=True)[0]
+        url_fetcher_input = {'url': file_platform_url, 'output_name': file_name}
+        url_fetcher_appdx.run(
+            app_input=url_fetcher_input, project=target_proj,
+            folder=file_dxpath)
+
+    def download_to_local(file_id, file_dxpath, file_name):
+        # Just creating a directory for saftey
+        prefix = "Downloaded_Files_dir_{}".format(time.time()) if target_fld_prefix is None else target_fld_prefix
+        file_dir = os.path.join(prefix, file_dxpath)
+        if not os.path.exists(file_dir):
+            os.makedirs(file_dir)
+        file_download_path = os.path.join(file_dir, file_name)
+        if os.path.isfile(file_download_path):
+            print('Found {fn} at {fpath}'.format(
+                fn=file_name, fpath=file_download_path))
+            return
+        print('downloading {fn} to {fdir}'.format(
+            fn=file_name, fdir=file_dir))
+        dxpy.download_dxfile(file_id, file_download_path)
+
+    url_fetcher_appdx = dxpy.DXApp('app-F4qJ1189b249vy69G1vF5jqf')
+    fetch_func = download_to_local if target_proj is None else transfer_to_project
+
+    file_describes = dxpy.find_data_objects(
+        classname='file', state='closed', visibility='visible',
+        project=src_proj, folder=src_proj_fld, describe=True)
+
+    for file_describe in file_describes:
+        if exclude_func is not None and exclude_func(file_describe):
+            continue
+        fetch_func(
+            file_id=file_describe['id'],
+            file_dxpath=file_describe['describe']['folder'],
+            file_name=file_describe['describe']['name'])
+
 
 
 dxpy.run()
