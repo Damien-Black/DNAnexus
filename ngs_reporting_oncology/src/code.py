@@ -19,10 +19,6 @@ import re
 import time
 import glob
 
-OPT_CMD = {
-    # 'sys_info_yaml': '--sys-cfg {param}',
-}
-
 PATTERN_MAPPING = {
     re.compile('^file-[0-9A-Za-z]{24}$'): dxpy.DXFile
 }
@@ -54,7 +50,10 @@ def download_job_inputs(input_dict):
 
 
 def get_opts(updated_input_dict):
-    """Create shell string for subrocess usage"""
+    """Add optional parameters"""
+    OPT_CMD = {
+        # 'sys_info_yaml': '--sys-cfg {param}',
+    }
     cmd_opt = []
     for inp, val in updated_input_dict.iteritems():
         opt_str = OPT_CMD.get(inp)
@@ -65,38 +64,70 @@ def get_opts(updated_input_dict):
     return cmd_opt
 
 
+def run_cmdl(cmdl):
+    print(" ".join(cmdl))
+    subprocess.check_call(cmdl)
+
+
 @dxpy.entry_point('main')
 def main(**job_inputs):
     # Biolerplate for debugging and ngs_report scripts
     # data_dir = os.path.join(os.path.expanduser('~'), 'Data')
     # os.mkdir(data_dir)
     # Download inputs
-    run_cmdl = ['source', '/miniconda/bin/activate', 'ngs_reporting', '&&',
-                'bcbio_postproc', '-d', '--sys-cfg', '/miniconda/reference_data/system_info_Nexus_Test.yaml']
+    print('PATH = ' + str(os.environ['PATH']))
+    os.environ['PATH'] += os.pathsep + '/miniconda/envs/ngs_reporting/bin' + os.pathsep + '/miniconda/bin'
+    os.environ['CONDA_DEFAULT_ENV'] = 'ngs_reporting'
+    print('PATH = ' + str(os.environ['PATH']))
+    run_cmdl(['which', 'bcbio_postproc'])
+    run_cmdl(['bcbio_postproc', '--version'])
+
+    # print()
+    # print('Removing NGS_Reporting from conda envirnoment to reinstall it from source')
+    # run_cmdl(["conda", "remove", "ngs_reporting", "-y"])
+    # print('Cloning the repository to get the latest source code')
+    # run_cmdl(["git", "clone", "https://github.com/AstraZeneca-NGS/NGS_Reporting"])
+    # os.chdir("NGS_Reporting")
+    # run_cmdl(["pip", "install", "--upgrade", "pip"])
+    # run_cmdl(["pip", "install", "--upgrade", "--ignore-installed", "setuptools"])
+    # run_cmdl(["python", "setup.py", "install"])
+    # os.chdir("..")
+    # run_cmdl(['which', 'bcbio_postproc'])
+    # run_cmdl(['bcbio_postproc', '--version'])
+
+    print()
+    sys_yaml = '/reference_data/system_info_Nexus_Test.yaml'
+    if os.path.isfile(sys_yaml):
+        print('Sys yaml ' + sys_yaml + ' exists')
+    else:
+        print('Sys yaml ' + sys_yaml + ' does not exist')
+
+    postproc_cmdl = ['bcbio_postproc', '-d', '--sys-cfg', sys_yaml]
 
     print("job_inputs: " + str(job_inputs))
     job_inputs = download_job_inputs(job_inputs)
     print("updated job_inputs: " + str(job_inputs))
-    run_cmdl.extend(get_opts(job_inputs))
+    postproc_cmdl.extend(get_opts(job_inputs))
 
-    bcbio_yaml = job_inputs['bcbio_yaml']['filePath']
-    print('Bcbio yaml:', bcbio_yaml)
-    bcbio_dir = os.path.dirname(os.path.dirname(bcbio_yaml))
+    bcbio_tar = job_inputs['bcbio_tar']['filePath']
+    print('Bcbio tar:', bcbio_tar)
+    cmdl = ['tar', '-xvf', bcbio_tar]
+    print('Extracting: ' + ' '.join(cmdl))
+    subprocess.check_call(cmdl)
+    bcbio_dir = bcbio_tar.replace('.tar.gz', '').replace('.tar', '')
     print('Bcbio directory:', bcbio_dir)
-    run_cmdl.append(bcbio_dir)
+    postproc_cmdl.append(bcbio_dir)
 
-    print('Runing post-processing with the command: "' + " ".join(run_cmdl) + '"')
-    subprocess.check_call(run_cmdl)
+    print('Runing post-processing with the command: "' + " ".join(postproc_cmdl) + '"')
+    subprocess.check_call(postproc_cmdl)
 
     # Output files
     output = {}
-    from ngs_utils.bcbio import BcbioProject
-    bcbio_proj = BcbioProject()
-    bcbio_proj.load_from_bcbio_dir(bcbio_dir)
-    report_path = bcbio_proj.find_multiqc_report()
-    if not report_path:
-        print('Error: not report.html found for project ' + bcbio_dir)
+    report_paths = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html"))
+    if not report_paths:
+        print('Error: report.html not found for project ' + bcbio_dir)
     else:
+        report_path = report_paths[0]
         output['html_report'] = dxpy.dxlink(dxpy.upload_local_file(report_path))
 
     return output

@@ -27,11 +27,8 @@ def get_file_list(output_file, resources_to_ignore):
     This method find all the files in the system and writes it to the output file
     """
     tmp_dir = os.path.dirname(output_file) + "*"
-    skipped_paths = ["/proc*", tmp_dir, "/run*", "/boot*", "/home/dnanexus*", "/sys*",
-                     "/dev*"]
-    cmd = ["sudo", "find", "/"]
-    for ignore_dir in skipped_paths + resources_to_ignore:
-        cmd.extend(["-not", "-path", ignore_dir])
+    cmd = ["sudo", "find", "/", "-path", "'/reference_data*'", "-or", "-path", "'/miniconda*'"]
+    print("code.py: find cmd: " + " ".join(cmd))
 
     env = os.environ.copy()
     env['LC_ALL'] = 'C'
@@ -71,6 +68,7 @@ def get_system_snapshot(output_file_path, ignore_files):
 def main(**kwargs):
     print("Start")
     before_file_list_path = os.path.join(tempfile.gettempdir(), "before-sorted.txt")
+    print("before_file_list_path: " + before_file_list_path)
     get_system_snapshot(before_file_list_path, [])
     print('Making Asset')
     # Do stuff on worker to create ngs_reporting asset by Vlad
@@ -89,18 +87,17 @@ def main(**kwargs):
     conda_cmd = os.path.join('/', 'miniconda', 'bin', 'conda')
     run_cmd_arr([conda_cmd, 'config', '--set', 'always_yes', 'yes', '--set', 'changeps1', 'no'])
     run_cmd_arr([conda_cmd, 'update', '-q', 'conda'])
-    print("Copy resources/reference_data to /miniconda/reference_data")
-    shutil.copytree("reference_data", "miniconda/reference_data")
     # conda create ngs_reporting
     py_ver = os.path.splitext(python_version())[0]
     print("Python Version:", py_ver)
     run_cmd_arr([conda_cmd, 'create', '-y', '-q', '-n', 'ngs_reporting', '-c', 'vladsaveliev', '-c', 'bioconda', '-c', 'r', '-c',
                  'conda-forge', 'python={py_ver}'.format(py_ver=py_ver), 'ngs_reporting'])
-    repo_dir = os.path.abspath('NGS_Reporting')
-    run_cmd_arr(["git", "clone", "https://github.com/AstraZeneca-NGS/NGS_Reporting", repo_dir])
-    os.chdir(repo_dir)
-    run_cmd_arr(["python", "setup.py", "install", "--single-version-externally-managed", "--record=record.txt"])
-    os.chdir("/")
+    # repo_dir = os.path.abspath('NGS_Reporting')
+    # run_cmd_arr(["git", "clone", "https://github.com/AstraZeneca-NGS/NGS_Reporting", repo_dir])
+    # os.chdir(repo_dir)
+    # run_cmd_arr(["ls"])
+    # run_cmd_arr(["./setup.py", "install", "--single-version-externally-managed", "--record=record.txt"])
+    # os.chdir("/")
 
     # Create asset
     asset_name = "ngs_reporting_asset"

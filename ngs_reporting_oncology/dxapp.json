@@ -5,11 +5,11 @@
   "dxapi": "1.0.0",
   "inputSpec": [
     {
-      "name": "bcbio_yaml",
-      "label": "Bcbio run yaml file path (stored in config directory)",
+      "name": "bcbio_tar",
+      "label": "Tar archive containing a Bcbio folder",
       "help": "",
       "class": "file",
-      "patterns": ["*.yaml"],
+      "patterns": ["*.tar"],
       "optional": false
     }
   ],
@@ -27,7 +27,7 @@
       {
         "name": "ngs_reporting_asset.tar.gz",
         "id": {
-          "$dnanexus_link": "file-F4xJJ6Q0vbKGK6Xy8yv8Qk7F"
+          "$dnanexus_link": "file-F5fFPx80vbK567P7P15GJz21"
         }
       }
     ],

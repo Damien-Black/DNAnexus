@@ -16,11 +16,14 @@ def get_file_list(output_file, resources_to_ignore):
     This method find all the files in the system and writes it to the output file
     """
     tmp_dir = os.path.dirname(output_file) + "*"
-    skipped_paths = ["/proc*", tmp_dir, "/run*", "/boot*", "/home/dnanexus*", "/sys*",
-                     "/dev*", "/var/log*", "/root*"]
-    cmd = ["sudo", "find", "/"]
-    for ignore_dir in skipped_paths + resources_to_ignore:
-        cmd.extend(["-not", "-path", ignore_dir])
+    # skipped_paths = ["/proc*", tmp_dir, "/run*", "/boot*", "/home/dnanexus*", "/sys*",
+    #                  "/dev*", "/var/log*", "/root*"]
+    cmd = ["sudo", "find", "/", "-path", "'/reference_data*'", "-or", "-path", "'/miniconda*'"]
+    # for ignore_dir in skipped_paths + resources_to_ignore:
+    #     cmd.extend(["-not", "-path", ignore_dir])
+    print("create_asset: find cmd: " + " ".join(cmd))
+    os.system(" ".join(cmd))
+    print()
 
     env = os.environ.copy()
     env['LC_ALL'] = 'C'
@@ -96,16 +99,24 @@ def main():
 
     before_file_list_path = os.path.join(tempfile.gettempdir(), "before-sorted.txt")
     after_file_list_path = os.path.join(tempfile.gettempdir(), "after-sorted.txt")
+    print("create-asset before_file_list_path: "+ before_file_list_path)
+    print("create-asset after_file_list_path: "+ after_file_list_path)
     get_system_snapshot(after_file_list_path, [])
 
     diff_file_path = os.path.join(tempfile.gettempdir(), "diff.txt")
     get_file_diffs(before_file_list_path, after_file_list_path, diff_file_path)
+    print("before_file_list_path: cat " + before_file_list_path)
+    os.system("cat " + before_file_list_path)
+    print("after_file_list_path: cat " + after_file_list_path)
+    os.system("cat " + after_file_list_path)
+    print("diff_file_path: cat " + diff_file_path)
+    os.system("cat " + diff_file_path)
 
     tar_output = re.sub(r"\s+", '-', args.name) + ".tar.gz"
     tar_output = dxpy.PROJECT_CONTEXT_ID + ":" + tar_output
-    tar_cmd = ["sudo", "tar", "-Pcz", "--no-recursion", "-T", diff_file_path, "-f", "-"]
+    tar_cmd = ["sudo", "tar", "-Pcz", "/reference_data", "/miniconda", "-f", "-"]
     dx_upload_cmd = ["dx", "upload", "-", "--wait", "--brief", "-o", tar_output, "--visibility", "hidden"]
-    print(" ".join(tar_cmd + ["|"] + dx_upload_cmd))
+    print("create_asset: tar_cmd = " + " ".join(tar_cmd + ["|"] + dx_upload_cmd))
     tar_ps = subprocess.Popen(tar_cmd, stdout=subprocess.PIPE)
     upload_ps = subprocess.Popen(dx_upload_cmd, stdin=tar_ps.stdout, stdout=subprocess.PIPE)
     print("Finished uploading to " + tar_output)
