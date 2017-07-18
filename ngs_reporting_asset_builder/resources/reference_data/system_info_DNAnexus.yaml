@@ -1,0 +1,14 @@
+genomes:
+  hg19:
+    dbsnp:            hg19/variation/dbsnp-147.vcf.gz
+    dbsnp_multi_mafs: hg19/variation/dbSNP_multi_mafs_v147.txt.gz
+    clinvar:          hg19/variation/clinvar.vcf.gz
+    cosmic:           hg19/variation/CosmicCodingMuts_v77.vcf.gz
+    all_transcripts:  hg19/rnaseq/ref-transcripts.gtf.gz
+
+  hg38:
+    dbsnp:            hg38/variation/dbsnp-147.vcf.gz
+    dbsnp_multi_mafs: hg38/variation/dbSNP_multi_mafs_v147.txt.gz
+    clinvar:          hg38/variation/clinvar.vcf.gz
+    cosmic:           hg38/variation/CosmicCodingMuts_v79.vcf.gz
+    all_transcripts:  hg38/rnaseq/ref-transcripts.gtf.gz
