@@ -129,17 +129,21 @@ def main(**job_inputs):
 
     # Output files
     report_file_links = []
-    print('Output files to expose:')
+    print('Output files to upload:')
     for item_path in (
         glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html")) + 
         glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "reports", "*.html")) + 
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.txt"))):
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.txt")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.vcf.gz*")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "cnv", "*")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "*", "varFilter", "*")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "*", "*.anno.filt.vcf.gz*"))):
         print(item_path)
         if os.path.isfile(item_path):
             report_file_links.append(
                 dxpy.dxlink(dxpy.upload_local_file(
                     filename=item_path,
-                    folder=bcbio_dir,  # you can reuse bcbio_output_dir_on_local here to mimic structure
+                    folder=os.path.dirname(item_path),  # you can reuse bcbio_output_dir_on_local here to mimic structure
                     parents=True))) # again parent just makes fodlers if they arent there
 
     output = {'report_files': report_file_links}
