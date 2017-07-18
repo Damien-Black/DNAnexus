@@ -71,10 +71,6 @@ def run_cmdl(cmdl):
 
 @dxpy.entry_point('main')
 def main(**job_inputs):
-    # Biolerplate for debugging and ngs_report scripts
-    # data_dir = os.path.join(os.path.expanduser('~'), 'Data')
-    # os.mkdir(data_dir)
-    # Download inputs
     print('PATH = ' + str(os.environ['PATH']))
     os.environ['PATH'] += os.pathsep + '/miniconda/envs/ngs_reporting/bin' + os.pathsep + '/miniconda/bin'
     os.environ['CONDA_DEFAULT_ENV'] = 'ngs_reporting'
@@ -102,7 +98,7 @@ def main(**job_inputs):
     else:
         print('Sys yaml ' + sys_yaml + ' does not exist')
 
-    postproc_cmdl = ['bcbio_postproc', '-d', '--sys-cfg', sys_yaml]
+    postproc_cmdl = ['bcbio_postproc', '--sys-cfg', sys_yaml]
 
     print("job_inputs: " + str(job_inputs))
     job_inputs = download_job_inputs(job_inputs)
@@ -115,12 +111,6 @@ def main(**job_inputs):
     print('Calling download_platform_folder_with_exclusion')
     copy_folder_to_proj(src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], src_proj_fld=bcbio_dir, target_fld_prefix='')
 
-    # bcbio_tar = job_inputs['bcbio_tar']['filePath']
-    # print('Bcbio tar:', bcbio_tar)
-    # cmdl = ['tar', '-xvf', bcbio_tar]
-    # print('Extracting: ' + ' '.join(cmdl))
-    # subprocess.check_call(cmdl)
-    # bcbio_dir = bcbio_tar.replace('.tar.gz', '').replace('.tar', '')
     print('Bcbio directory:', bcbio_dir)
     postproc_cmdl.append(bcbio_dir)
 
@@ -147,13 +137,6 @@ def main(**job_inputs):
                     parents=True))) # again parent just makes fodlers if they arent there
 
     output = {'report_files': report_file_links}
-
-    # report_paths = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html"))
-    # if not report_paths:
-    #     print('Error: report.html not found for project ' + bcbio_dir)
-    # else:
-    #     report_path = report_paths[0]
-    #     output['html_report'] = dxpy.dxlink(dxpy.upload_local_file(report_path))
 
     return output
 
@@ -206,7 +189,6 @@ def copy_folder_to_proj(src_proj, target_proj=None, src_proj_fld=None, target_fl
             file_id=file_describe['id'],
             file_dxpath=file_describe['describe']['folder'],
             file_name=file_describe['describe']['name'])
-
 
 
 dxpy.run()
