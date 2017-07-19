@@ -122,10 +122,17 @@ def main(**job_inputs):
         if not bed_file.startswith('/'): 
             bed_file = os.path.abspath(os.path.join(final_dir, bed_file))
             print("  path of the BED file is not absolute, changing to " + bed_file)
-        # TODO: download bed_file locally
+        copy_folder_to_proj(
+            src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], 
+            src_proj_fld=os.path.dirname(bed_file), 
+            target_fld_prefix='',
+            exclude_func=lambda dxfile: dxfile['describe']['name'] != os.path.basename(bed_file))
 
     print('Copy final_dir ' + final_dir + ' locally for processing')
-    copy_folder_to_proj(src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], src_proj_fld=final_dir, target_fld_prefix='')
+    copy_folder_to_proj(
+        src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], 
+        src_proj_fld=final_dir, 
+        target_fld_prefix='')
 
     config_dir = os.path.join(os.path.dirname(final_dir), "config")
     if not os.path.isdir(config_dir):
