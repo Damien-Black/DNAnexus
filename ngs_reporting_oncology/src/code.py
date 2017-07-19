@@ -92,7 +92,7 @@ def main(**job_inputs):
     # run_cmdl(['bcbio_postproc', '--version'])
 
     print()
-    sys_yaml = '/reference_data/system_info_Nexus_Test.yaml'
+    sys_yaml = '/reference_data/system_info_DNAnexus.yaml'
     if os.path.isfile(sys_yaml):
         print('Sys yaml ' + sys_yaml + ' exists')
     else:
@@ -117,28 +117,59 @@ def main(**job_inputs):
     print('Runing post-processing with the command: "' + " ".join(postproc_cmdl) + '"')
     subprocess.check_call(postproc_cmdl)
 
-    # Output files
+    ##### Output files ####
     report_file_links = []
-    print('Output files to upload:')
+    print('Uploading output files')
+
+    # HTML reports
+    multiqc_report = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html"))
+    if not multiqc_report:     
+        print('Error: report.html not found for project ' + bcbio_dir)
+        sys.exit(1)
+    multiqc_report = multiqc_report[0]
+    print('MultiQC report: ' + multiqc_report)
+
+    other_reports = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "reports", "*.html"))
+    url_mapping = dict()
+    print('Other reports:')
+    for path in other_reports:
+        print('  ' + path)
+        dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=path, folder=os.path.dirname(path), parents=True))
+        report_file_links.append(dxlink)
+        dxurl = 'https://platform.dnanexus.com/' + os.environ['DX_PROJECT_CONTEXT_ID'] + '/' + dxlink['$dnanexus_link'] + '/view'
+        relpath = os.path.relpath(path, os.path.dirname(multiqc_report))
+        url_mapping[relpath] = dxurl
+
+    print('Fixing links to reports in the MultiQC report')
+    replace_in_file(multiqc_report, url_mapping)
+    dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=multiqc_report, folder=os.path.dirname(multiqc_report), parents=True))
+    report_file_links.append(dxlink)
+
+    # Other output files
+    print('Other files:')
     for item_path in (
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html")) + 
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "reports", "*.html")) + 
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.txt")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.vcf.gz*")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "cnv", "*")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "*", "varFilter", "*")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "*", "*.anno.filt.vcf.gz*"))):
+            glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.txt")) +
+            glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.vcf.gz*")) +
+            glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "cnv", "*")) +
+            glob.glob(os.path.join(bcbio_dir, "final*", "*", "varFilter", "*")) +
+            glob.glob(os.path.join(bcbio_dir, "final*", "*", "*.anno.filt.vcf.gz*"))):
         print(item_path)
-        if os.path.isfile(item_path):
-            report_file_links.append(
-                dxpy.dxlink(dxpy.upload_local_file(
-                    filename=item_path,
-                    folder=os.path.dirname(item_path),  # you can reuse bcbio_output_dir_on_local here to mimic structure
-                    parents=True))) # again parent just makes fodlers if they arent there
+        dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=item_path, folder=os.path.dirname(item_path), parents=True))
+        report_file_links.append(dxlink)
 
     output = {'report_files': report_file_links}
 
     return output
+
+
+def replace_in_file(fpath, url_mapping):
+    with open(fpath, 'r') as file:
+        filedata = unicode(file.read(), 'utf-8')
+    for old, new in url_mapping.items():
+        print('  replace ' + old + ' -> ' + new)
+        filedata = filedata.replace(old, new)
+    with open(fpath, 'w') as file:
+        file.write(filedata.encode('utf-8'))
 
 
 def copy_folder_to_proj(src_proj, target_proj=None, src_proj_fld=None, target_fld_prefix=None, exclude_func=None):
