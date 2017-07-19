@@ -5,16 +5,16 @@
   "dxapi": "1.0.0",
   "version": "2.3.14",
   "authorizedUsers": [
-      "vlad.saveliev",
-      "sma_astrazeneca",
-      "astrazeneca_poc"
+      "user-vlad.saveliev",
+      "org-astrazeneca_poc"
   ],
   "inputSpec": [
     {
-      "name": "bcbio_dir",
-      "label": "Input directory path",
-      "help": "Input directory can be either 'final' upload directory of a bcbio_nextgen run, or its parent directory, in which case the location will be derived from bcbio's yaml config.",
-      "class": "string",
+      "name": "bcbio_yaml",
+      "label": "Bcbio-nextgen YAML file",
+      "help": "YAML file of a bcbio-nextgen run, containing absolute path to the `final` directory, e.g. `upload: dir: /data/output`",
+      "class": "file",
+      "patterns": ["*.yaml"],
       "optional": false
     }
   ],
@@ -58,5 +58,9 @@
     },
     "distribution": "Ubuntu"
   },
-  "access": {"network": ["*"]}
+  "access": {
+    "project": "CONTRIBUTE",
+    "allProjects": "VIEW",
+    "network": ["*"]
+  }
 }

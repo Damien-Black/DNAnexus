@@ -18,6 +18,7 @@ import subprocess
 import re
 import time
 import glob
+from yaml import load as load_yaml
 
 PATTERN_MAPPING = {
     re.compile('^file-[0-9A-Za-z]{24}$'): dxpy.DXFile
@@ -105,14 +106,38 @@ def main(**job_inputs):
     print("updated job_inputs: " + str(job_inputs))
     postproc_cmdl.extend(get_opts(job_inputs))
 
-    bcbio_dir = job_inputs['bcbio_dir']
-    if not bcbio_dir.startswith('/'):
-        bcbio_dir = '/' + bcbio_dir
-    print('Calling download_platform_folder_with_exclusion')
-    copy_folder_to_proj(src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], src_proj_fld=bcbio_dir, target_fld_prefix='')
+    bcbio_yaml = job_inputs['bcbio_yaml']['filePath']
+    print("bcbio yaml: " + bcbio_yaml)
+    with open(bcbio_yaml) as f:
+        conf_d = load_yaml(f)
+    assert "upload" in conf_d, "upload not in bcbio_yaml " + bcbio_yaml
+    final_dir = conf_d["upload"]["dir"]
+    if not final_dir.startswith('/'): 
+        print("final_dir " + final_dir + ' is not absolute')
+        final_dir = '/dream_chr21/final'  # test data
+    sample_section = conf_d["details"][0]["algorithm"]
+    bed_files = [v for k, v in sample_section.items() if k in ['variant_regions', 'sv_regions', 'coverage']]
+    for bed_file in bed_files:
+        print("Uploading BED file " + bed_file)        
+        if not bed_file.startswith('/'): 
+            bed_file = os.path.abspath(os.path.join(final_dir, bed_file))
+            print("  path of the BED file is not absolute, changing to " + bed_file)
+        # TODO: download bed_file locally
 
-    print('Bcbio directory:', bcbio_dir)
-    postproc_cmdl.append(bcbio_dir)
+    print('Copy final_dir ' + final_dir + ' locally for processing')
+    copy_folder_to_proj(src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], src_proj_fld=final_dir, target_fld_prefix='')
+
+    config_dir = os.path.join(os.path.dirname(final_dir), "config")
+    if not os.path.isdir(config_dir):
+        print('Creating config dir ' + config_dir)
+        os.makedirs(config_dir)
+    else:
+        print('config dir ' + config_dir + ' exists')
+    print('Copy ' + bcbio_yaml + ' into ' + config_dir)
+    config_bcbio_yaml = os.path.join(config_dir, os.path.basename(bcbio_yaml))
+    os.rename(bcbio_yaml, config_bcbio_yaml)
+
+    postproc_cmdl.append(final_dir)
 
     print('Runing post-processing with the command: "' + " ".join(postproc_cmdl) + '"')
     subprocess.check_call(postproc_cmdl)
@@ -122,23 +147,23 @@ def main(**job_inputs):
     print('Uploading output files')
 
     # HTML reports
-    multiqc_report = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "report.html"))
+    multiqc_report = glob.glob(os.path.join(final_dir, "20??-??-??_*", "report.html"))
     if not multiqc_report:     
-        print('Error: report.html not found for project ' + bcbio_dir)
+        print('Error: report.html not found for project ' + final_dir)
         sys.exit(1)
     multiqc_report = multiqc_report[0]
     print('MultiQC report: ' + multiqc_report)
 
     files_linked_to_multiqc = (
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "call_vis.html")) +  # remove this line after update
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "call_vis.part1.html")) +  # remove this line after update
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "reports", "*.html")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "vardict.PASS.txt")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "vardict.paired.PASS.txt")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "vardict.single.PASS.txt")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "cnv", "seq2c.tsv")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "log", "programs.txt")) +
-        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "log", "data_versions.csv")))
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "call_vis.html")) +  # remove this line after update
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "call_vis.part1.html")) +  # remove this line after update
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "reports", "*.html")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "vardict.PASS.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "vardict.paired.PASS.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "vardict.single.PASS.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "cnv", "seq2c.tsv")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "log", "programs.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "log", "data_versions.csv")))
 
     url_mapping = dict()
     print('Other reports:')
@@ -158,11 +183,11 @@ def main(**job_inputs):
     # Other output files
     print('Other files:')
     for path in (
-            glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.txt")) +
-            glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.vcf.gz*")) +
-            glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "cnv", "*")) +
-            glob.glob(os.path.join(bcbio_dir, "final*", "*", "varFilter", "*")) +
-            glob.glob(os.path.join(bcbio_dir, "final*", "*", "*.anno.filt.vcf.gz*"))):
+            glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "*.txt")) +
+            glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "*.vcf.gz*")) +
+            glob.glob(os.path.join(final_dir, "20??-??-??_*", "cnv", "*")) +
+            glob.glob(os.path.join(final_dir, "*", "varFilter", "*")) +
+            glob.glob(os.path.join(final_dir, "*", "*.anno.filt.vcf.gz*"))):
         relpath = os.path.relpath(path, os.path.dirname(multiqc_report))
         if relpath not in url_mapping:  # file not yet uploaded
             print('  ' + path)
