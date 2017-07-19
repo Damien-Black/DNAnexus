@@ -129,10 +129,20 @@ def main(**job_inputs):
     multiqc_report = multiqc_report[0]
     print('MultiQC report: ' + multiqc_report)
 
-    other_reports = glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "reports", "*.html"))
+    files_linked_to_multiqc = (
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "call_vis.html")) +  # remove this line after update
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "call_vis.part1.html")) +  # remove this line after update
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "reports", "*.html")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "vardict.PASS.txt")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "vardict.paired.PASS.txt")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "vardict.single.PASS.txt")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "cnv", "seq2c.tsv")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "log", "programs.txt")) +
+        glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "log", "data_versions.csv")))
+
     url_mapping = dict()
     print('Other reports:')
-    for path in other_reports:
+    for path in files_linked_to_multiqc:
         print('  ' + path)
         dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=path, folder=os.path.dirname(path), parents=True))
         report_file_links.append(dxlink)
@@ -147,15 +157,17 @@ def main(**job_inputs):
 
     # Other output files
     print('Other files:')
-    for item_path in (
+    for path in (
             glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.txt")) +
             glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "var", "*.vcf.gz*")) +
             glob.glob(os.path.join(bcbio_dir, "final*", "20??-??-??_*", "cnv", "*")) +
             glob.glob(os.path.join(bcbio_dir, "final*", "*", "varFilter", "*")) +
             glob.glob(os.path.join(bcbio_dir, "final*", "*", "*.anno.filt.vcf.gz*"))):
-        print(item_path)
-        dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=item_path, folder=os.path.dirname(item_path), parents=True))
-        report_file_links.append(dxlink)
+        relpath = os.path.relpath(path, os.path.dirname(multiqc_report))
+        if relpath not in url_mapping:  # file not yet uploaded
+            print('  ' + path)
+            dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=path, folder=os.path.dirname(path), parents=True))
+            report_file_links.append(dxlink)
 
     output = {'report_files': report_file_links}
 
