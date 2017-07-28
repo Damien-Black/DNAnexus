@@ -2,11 +2,12 @@ from __future__ import print_function
 import os
 import subprocess
 import tempfile
-import time
 import pipes
 import dxpy
-import shutil
+import glob
+from shutil import rmtree
 from platform import python_version
+from contextlib import contextmanager
 
 
 class args_fake():
@@ -64,44 +65,177 @@ def get_system_snapshot(output_file_path, ignore_files):
         proc.communicate()
 
 
+def copy_platform_folder_to_local(src_proj, src_proj_fld=None, dest_fld_prefix=None, exclude_func=None):
+    """Copies folder from src_proj to target_proj under target_proj_fld_prefix
+
+    Args:
+            src_proj_fld: Source folder to copy from. If None, project root is assumed.
+            dest_fld_prefix: Prefix to prepend to copied folders.
+                               Defaults {project}/ on local
+            exclude_func: func that is passed the describe results of a dxobject and returns a boolean.
+                True - file is not copied, False - File is copied over.
+    """
+    def download_to_local(file_id, file_dxpath, file_name):
+        file_dir = os.path.join(prefix, file_dxpath.strip('/'))
+        if not os.path.exists(file_dir):
+            os.makedirs(file_dir)
+        file_download_path = os.path.join(file_dir, file_name)
+        if os.path.isfile(file_download_path):
+            print('Found {fn} at {fpath}'.format(
+                fn=file_name, fpath=file_download_path))
+            return
+        print('downloading {fn} to {fdir}'.format(
+            fn=file_name, fdir=file_dir))
+        dxpy.download_dxfile(file_id, file_download_path)
+
+    proj_name = dxpy.DXProject(src_proj).name
+    prefix = proj_name if dest_fld_prefix is None else dest_fld_prefix
+
+    print('Searching {fld} in project {proj}'.format(
+        fld=src_proj_fld if src_proj_fld else 'root', proj=proj_name))
+    file_describes = dxpy.find_data_objects(
+        classname='file', state='closed', visibility='visible',
+        project=src_proj, folder=src_proj_fld, describe=True)
+
+    for file_describe in file_describes:
+        if exclude_func is not None and exclude_func(file_describe):
+            continue
+        download_to_local(
+            file_id=file_describe['id'],
+            file_dxpath=file_describe['describe']['folder'],
+            file_name=file_describe['describe']['name'])
+
+
+@contextmanager
+def dream_chr21_test():
+    #TODO: download and untar references instead
+    dream_dir = os.path.join('/', 'dream_chr21')
+    reference_dir = os.path.join('/', 'reference_data')
+    copy_platform_folder_to_local(
+        src_proj=os.environ['DX_PROJECT_CONTEXT_ID'],
+        src_proj_fld=dream_dir,
+        dest_fld_prefix='/')
+    copy_platform_folder_to_local(
+        src_proj=os.environ['DX_PROJECT_CONTEXT_ID'],
+        src_proj_fld=reference_dir,
+        dest_fld_prefix='/')
+    yield dream_dir
+    rmtree(dream_dir)
+    rmtree(reference_dir)
+
+
+def replace_in_file(fpath, url_mapping):
+    with open(fpath, 'r') as file:
+        filedata = unicode(file.read(), 'utf-8')
+    for old, new in url_mapping.items():
+        print('  replace ' + old + ' -> ' + new)
+        filedata = filedata.replace(old, new)
+    with open(fpath, 'w') as file:
+        file.write(filedata.encode('utf-8'))
+
+
+def output_test_files(final_dir):
+    """Output files"""
+    report_file_links = []
+    # HTML reports
+    multiqc_report = glob.glob(os.path.join(final_dir, "20??-??-??_*", "report.html"))
+    if not multiqc_report:
+        raise dxpy.exceptions.AppInternalError('Error: report.html not found for project ' + final_dir)
+    multiqc_report = multiqc_report[0]
+    print('MultiQC Test report: ' + multiqc_report)
+
+    files_linked_to_multiqc = (
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "call_vis.html")) +  # remove this line after update
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "call_vis.part1.html")) +  # remove this line after update
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "reports", "*.html")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "vardict.PASS.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "vardict.paired.PASS.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "vardict.single.PASS.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "cnv", "seq2c.tsv")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "log", "programs.txt")) +
+        glob.glob(os.path.join(final_dir, "20??-??-??_*", "log", "data_versions.csv")))
+
+    url_mapping = dict()
+    print('Other Test reports:')
+    for path in files_linked_to_multiqc:
+        print('  ' + path)
+        dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=path, folder=os.path.dirname(path), parents=True))
+        report_file_links.append(dxlink)
+        dxurl = 'https://platform.dnanexus.com/' + os.environ['DX_PROJECT_CONTEXT_ID'] + '/' + dxlink['$dnanexus_link'] + '/view'
+        relpath = os.path.relpath(path, os.path.dirname(multiqc_report))
+        url_mapping[relpath] = dxurl
+
+    print('Fixing links to reports in the MultiQC report')
+    replace_in_file(multiqc_report, url_mapping)
+    dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=multiqc_report, folder=os.path.dirname(multiqc_report), parents=True))
+    report_file_links.append(dxlink)
+
+    # Other output files
+    print('Other files:')
+    for path in (
+            glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "*.txt")) +
+            glob.glob(os.path.join(final_dir, "20??-??-??_*", "var", "*.vcf.gz*")) +
+            glob.glob(os.path.join(final_dir, "20??-??-??_*", "cnv", "*")) +
+            glob.glob(os.path.join(final_dir, "*", "varFilter", "*")) +
+            glob.glob(os.path.join(final_dir, "*", "*.anno.filt.vcf.gz*"))):
+        relpath = os.path.relpath(path, os.path.dirname(multiqc_report))
+        if relpath not in url_mapping:  # file not yet uploaded
+            print('  ' + path)
+            dxlink = dxpy.dxlink(dxpy.upload_local_file(filename=path, folder=os.path.dirname(path), parents=True))
+            report_file_links.append(dxlink)
+
+    return report_file_links
+
+
 @dxpy.entry_point("main")
 def main(**kwargs):
     print("Start")
     before_file_list_path = os.path.join(tempfile.gettempdir(), "before-sorted.txt")
     print("before_file_list_path: " + before_file_list_path)
     get_system_snapshot(before_file_list_path, [])
+
     print('Making Asset')
-    # Do stuff on worker to create ngs_reporting asset by Vlad
-    # Sleep instance for ssh-in purposes, add tag "done" when finished
-    # job_dx = dxpy.DXJob(os.environ["DX_JOB_ID"])
-    # descr = job_dx.describe()
-    # while "done" not in descr["tags"]:
-    #     time.sleep(60)
-    #     descr = job_dx.describe()
-    # print("Creating asset")
-
     os.chdir("/")
-
     run_cmd_arr(['wget', 'https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh', '-O', 'miniconda.sh'])
     run_cmd_arr(['bash', 'miniconda.sh', '-b', '-p', '/miniconda'])
     conda_cmd = os.path.join('/', 'miniconda', 'bin', 'conda')
     run_cmd_arr([conda_cmd, 'config', '--set', 'always_yes', 'yes', '--set', 'changeps1', 'no'])
     run_cmd_arr([conda_cmd, 'update', '-q', 'conda'])
+
     # conda create ngs_reporting
     py_ver = os.path.splitext(python_version())[0]
     print("Python Version:", py_ver)
     run_cmd_arr([conda_cmd, 'create', '-y', '-q', '-n', 'ngs_reporting', '-c', 'vladsaveliev', '-c', 'bioconda', '-c', 'r', '-c',
                  'conda-forge', 'python={py_ver}'.format(py_ver=py_ver), 'ngs_reporting'])
-    # repo_dir = os.path.abspath('NGS_Reporting')
-    # run_cmd_arr(["git", "clone", "https://github.com/AstraZeneca-NGS/NGS_Reporting", repo_dir])
-    # os.chdir(repo_dir)
-    # run_cmd_arr(["ls"])
-    # run_cmd_arr(["./setup.py", "install", "--single-version-externally-managed", "--record=record.txt"])
-    # os.chdir("/")
+
+    # Run Test in Home
+    os.chdir(os.path.expanduser('~'))
+    print("Preparing Test Suite")
+    run_cmd_arr(['git', 'clone', 'https://github.com/vladsaveliev/NGS_Reporting_TestData'])
+    os.environ['PATH'] += os.pathsep + '/miniconda/envs/ngs_reporting/bin' + os.pathsep + '/miniconda/bin'
+    os.environ['CONDA_DEFAULT_ENV'] = 'ngs_reporting'
+
+    test_results = []
+    with dream_chr21_test() as dream_dir:
+        final_dir = os.path.join(dream_dir, 'final')
+        sys_yaml = '/reference_data/system_info_DNAnexus.yaml'
+        postproc_cmdl = ['bcbio_postproc', '--sys-cfg', sys_yaml, final_dir]
+        run_cmd_arr(postproc_cmdl)
+        print('Uploading Test reports for manual Verification')
+        test_results = output_test_files(final_dir)
+
+    print("Creating Asset")
 
     # Create asset
     asset_name = "ngs_reporting_asset"
     asset_title = "NGS reporting Asset"
     description = "AZ post-processing suite for https://github.com/chapmanb/bcbio-nextgen: mutation and coverage prioritisation, visualisation, reporting and exposing.\nConda command: {conda_cmd}\nActivate ngs_reporting environment: /miniconda/bin/conda activate ngs_reporting".format(conda_cmd=conda_cmd)
     asset_version = "0.0.2"  # Get proper version info, probably from conda
-    run_cmd_arr(["create-asset", "--name", asset_name, "--title", asset_title, "--description", description, "--version", asset_version]) 
+    run_cmd_arr(["create-asset", "--name", asset_name, "--title", asset_title, "--description", description, "--version", asset_version])
+
+    # Output test results
+    print('Asset created, be sure to manually review test results')
+    job_proj = dxpy.DXProject(dxpy.WORKSPACE_ID)
+    job_proj.move("/dream_chr21", destination="/dream_chr21_asettestresult")
+
+    return {'test_report_files': test_results}

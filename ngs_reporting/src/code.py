@@ -16,7 +16,6 @@ import os
 import dxpy
 import subprocess
 import re
-import time
 import glob
 from yaml import load as load_yaml
 
@@ -70,6 +69,57 @@ def run_cmdl(cmdl):
     subprocess.check_call(cmdl)
 
 
+def replace_in_file(fpath, url_mapping):
+    with open(fpath, 'r') as file:
+        filedata = unicode(file.read(), 'utf-8')
+    for old, new in url_mapping.items():
+        print('  replace ' + old + ' -> ' + new)
+        filedata = filedata.replace(old, new)
+    with open(fpath, 'w') as file:
+        file.write(filedata.encode('utf-8'))
+
+
+def copy_platform_folder_to_local(src_proj, src_proj_fld=None, dest_fld_prefix=None, exclude_func=None):
+    """Copies folder from src_proj to target_proj under target_proj_fld_prefix
+
+    Args:
+            src_proj_fld: Source folder to copy from. If None, project root is assumed.
+            dest_fld_prefix: Prefix to prepend to copied folders.
+                               Defaults {project}/ on local
+            exclude_func: func that is passed the describe results of a dxobject and returns a boolean.
+                True - file is not copied, False - File is copied over.
+    """
+    def download_to_local(file_id, file_dxpath, file_name):
+        file_dir = os.path.join(prefix, file_dxpath.strip('/'))
+        if not os.path.exists(file_dir):
+            os.makedirs(file_dir)
+        file_download_path = os.path.join(file_dir, file_name)
+        if os.path.isfile(file_download_path):
+            print('Found {fn} at {fpath}'.format(
+                fn=file_name, fpath=file_download_path))
+            return
+        print('downloading {fn} to {fdir}'.format(
+            fn=file_name, fdir=file_dir))
+        dxpy.download_dxfile(file_id, file_download_path)
+
+    proj_name = dxpy.DXProject(src_proj).name
+    prefix = proj_name if dest_fld_prefix is None else dest_fld_prefix
+
+    print('Searching {fld} in project {proj}'.format(
+        fld=src_proj_fld if src_proj_fld else 'root', proj=proj_name))
+    file_describes = dxpy.find_data_objects(
+        classname='file', state='closed', visibility='visible',
+        project=src_proj, folder=src_proj_fld, describe=True)
+
+    for file_describe in file_describes:
+        if exclude_func is not None and exclude_func(file_describe):
+            continue
+        download_to_local(
+            file_id=file_describe['id'],
+            file_dxpath=file_describe['describe']['folder'],
+            file_name=file_describe['describe']['name'])
+
+
 @dxpy.entry_point('main')
 def main(**job_inputs):
     print('PATH = ' + str(os.environ['PATH']))
@@ -92,7 +142,6 @@ def main(**job_inputs):
     # run_cmdl(['which', 'bcbio_postproc'])
     # run_cmdl(['bcbio_postproc', '--version'])
 
-    print()
     sys_yaml = '/reference_data/system_info_DNAnexus.yaml'
     if os.path.isfile(sys_yaml):
         print('Sys yaml ' + sys_yaml + ' exists')
@@ -110,29 +159,29 @@ def main(**job_inputs):
     print("bcbio yaml: " + bcbio_yaml)
     with open(bcbio_yaml) as f:
         conf_d = load_yaml(f)
-    assert "upload" in conf_d, "upload not in bcbio_yaml " + bcbio_yaml
+    assert "upload" in conf_d, "upload not in bcbio_yaml: " + bcbio_yaml
     final_dir = conf_d["upload"]["dir"]
-    if not final_dir.startswith('/'): 
+    if not final_dir.startswith('/'):
         print("final_dir " + final_dir + ' is not absolute')
         final_dir = '/dream_chr21/final'  # test data
     sample_section = conf_d["details"][0]["algorithm"]
-    bed_files = [v for k, v in sample_section.items() if k in ['variant_regions', 'sv_regions', 'coverage']]
+    bed_files = [v for k, v in sample_section.iteritems() if k in ['variant_regions', 'sv_regions', 'coverage']]
     for bed_file in bed_files:
-        print("Uploading BED file " + bed_file)        
-        if not bed_file.startswith('/'): 
+        print("Uploading BED file " + bed_file)
+        if not bed_file.startswith('/'):
             bed_file = os.path.abspath(os.path.join(final_dir, bed_file))
             print("  path of the BED file is not absolute, changing to " + bed_file)
-        copy_folder_to_proj(
-            src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], 
-            src_proj_fld=os.path.dirname(bed_file), 
-            target_fld_prefix='',
+        copy_platform_folder_to_local(
+            src_proj=os.environ['DX_PROJECT_CONTEXT_ID'],
+            src_proj_fld=os.path.dirname(bed_file),
+            dest_fld_prefix='/',
             exclude_func=lambda dxfile: dxfile['describe']['name'] != os.path.basename(bed_file))
 
     print('Copy final_dir ' + final_dir + ' locally for processing')
-    copy_folder_to_proj(
-        src_proj=os.environ['DX_PROJECT_CONTEXT_ID'], 
-        src_proj_fld=final_dir, 
-        target_fld_prefix='')
+    copy_platform_folder_to_local(
+        src_proj=os.environ['DX_PROJECT_CONTEXT_ID'],
+        src_proj_fld=final_dir,
+        dest_fld_prefix='/')
 
     config_dir = os.path.join(os.path.dirname(final_dir), "config")
     if not os.path.isdir(config_dir):
@@ -146,7 +195,7 @@ def main(**job_inputs):
 
     postproc_cmdl.append(final_dir)
 
-    print('Runing post-processing with the command: "' + " ".join(postproc_cmdl) + '"')
+    print('Running post-processing with the command: "' + " ".join(postproc_cmdl) + '"')
     subprocess.check_call(postproc_cmdl)
 
     ##### Output files ####
@@ -155,9 +204,8 @@ def main(**job_inputs):
 
     # HTML reports
     multiqc_report = glob.glob(os.path.join(final_dir, "20??-??-??_*", "report.html"))
-    if not multiqc_report:     
-        print('Error: report.html not found for project ' + final_dir)
-        sys.exit(1)
+    if not multiqc_report:
+        raise dxpy.exceptions.AppInternalError('Error: report.html not found for project ' + final_dir)
     multiqc_report = multiqc_report[0]
     print('MultiQC report: ' + multiqc_report)
 
@@ -204,66 +252,6 @@ def main(**job_inputs):
     output = {'report_files': report_file_links}
 
     return output
-
-
-def replace_in_file(fpath, url_mapping):
-    with open(fpath, 'r') as file:
-        filedata = unicode(file.read(), 'utf-8')
-    for old, new in url_mapping.items():
-        print('  replace ' + old + ' -> ' + new)
-        filedata = filedata.replace(old, new)
-    with open(fpath, 'w') as file:
-        file.write(filedata.encode('utf-8'))
-
-
-def copy_folder_to_proj(src_proj, target_proj=None, src_proj_fld=None, target_fld_prefix=None, exclude_func=None):
-    """Copies folder from src_proj to target_proj under target_proj_fld_prefix
-    Args:
-            target_proj: Destination project. If not specified local machine is assumed.
-            src_proj_fld: Source folder to copy from. If None, project root is assumed.
-            target_fld_prefix: Prefix to prepend to copied folders. Defaults to Root if not specified
-            exclude_func: func that is passed the describe results of a dxobject and returns a boolean.
-                True - file is copied, False - Not copied over.
-    """
-    def transfer_to_project(file_id, file_dxpath, file_name):
-        f_dx = dxpy.DXFile(file_id, project=src_proj)
-        prefix = "/" if target_fld_prefix is None else target_fld_prefix
-        file_dxpath = os.path.join(prefix, file_dxpath)
-        file_platform_url = f_dx.get_download_url(duration=3600, preauthenticated=True)[0]
-        url_fetcher_input = {'url': file_platform_url, 'output_name': file_name}
-        url_fetcher_appdx.run(
-            app_input=url_fetcher_input, project=target_proj,
-            folder=file_dxpath)
-
-    def download_to_local(file_id, file_dxpath, file_name):
-        # Just creating a directory for saftey
-        prefix = "Downloaded_Files_dir_{}".format(time.time()) if target_fld_prefix is None else target_fld_prefix
-        file_dir = os.path.join(prefix, file_dxpath)
-        if not os.path.exists(file_dir):
-            os.makedirs(file_dir)
-        file_download_path = os.path.join(file_dir, file_name)
-        if os.path.isfile(file_download_path):
-            print('Found {fn} at {fpath}'.format(
-                fn=file_name, fpath=file_download_path))
-            return
-        print('downloading {fn} to {fdir}'.format(
-            fn=file_name, fdir=file_dir))
-        dxpy.download_dxfile(file_id, file_download_path)
-
-    url_fetcher_appdx = dxpy.DXApp('app-F4qJ1189b249vy69G1vF5jqf')
-    fetch_func = download_to_local if target_proj is None else transfer_to_project
-
-    file_describes = dxpy.find_data_objects(
-        classname='file', state='closed', visibility='visible',
-        project=src_proj, folder=src_proj_fld, describe=True)
-
-    for file_describe in file_describes:
-        if exclude_func is not None and exclude_func(file_describe):
-            continue
-        fetch_func(
-            file_id=file_describe['id'],
-            file_dxpath=file_describe['describe']['folder'],
-            file_name=file_describe['describe']['name'])
 
 
 dxpy.run()
