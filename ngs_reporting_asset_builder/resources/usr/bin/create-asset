@@ -18,7 +18,7 @@ def get_file_list(output_file, resources_to_ignore):
     tmp_dir = os.path.dirname(output_file) + "*"
     # skipped_paths = ["/proc*", tmp_dir, "/run*", "/boot*", "/home/dnanexus*", "/sys*",
     #                  "/dev*", "/var/log*", "/root*"]
-    cmd = ["sudo", "find", "/", "-path", "'/reference_data*'", "-or", "-path", "'/miniconda*'"]
+    cmd = ["sudo", "find", "/", "-path", "'/miniconda*'"]
     # for ignore_dir in skipped_paths + resources_to_ignore:
     #     cmd.extend(["-not", "-path", ignore_dir])
     print("create_asset: find cmd: " + " ".join(cmd))
@@ -135,6 +135,7 @@ def main():
                                      types=["AssetBundle"], details=record_details,
                                      properties=record_properties, close=True,
                                      project=dxpy.PROJECT_CONTEXT_ID)
+    print(asset_bundle.get_id())
     return asset_bundle.get_id()
 
 if __name__ == '__main__':

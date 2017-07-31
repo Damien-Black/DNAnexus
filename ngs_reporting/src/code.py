@@ -129,19 +129,6 @@ def main(**job_inputs):
     run_cmdl(['which', 'bcbio_postproc'])
     run_cmdl(['bcbio_postproc', '--version'])
 
-    # print()
-    # print('Removing NGS_Reporting from conda envirnoment to reinstall it from source')
-    # run_cmdl(["conda", "remove", "ngs_reporting", "-y"])
-    # print('Cloning the repository to get the latest source code')
-    # run_cmdl(["git", "clone", "https://github.com/AstraZeneca-NGS/NGS_Reporting"])
-    # os.chdir("NGS_Reporting")
-    # run_cmdl(["pip", "install", "--upgrade", "pip"])
-    # run_cmdl(["pip", "install", "--upgrade", "--ignore-installed", "setuptools"])
-    # run_cmdl(["python", "setup.py", "install"])
-    # os.chdir("..")
-    # run_cmdl(['which', 'bcbio_postproc'])
-    # run_cmdl(['bcbio_postproc', '--version'])
-
     sys_yaml = '/reference_data/system_info_DNAnexus.yaml'
     if os.path.isfile(sys_yaml):
         print('Sys yaml ' + sys_yaml + ' exists')
@@ -198,7 +185,7 @@ def main(**job_inputs):
     print('Running post-processing with the command: "' + " ".join(postproc_cmdl) + '"')
     subprocess.check_call(postproc_cmdl)
 
-    ##### Output files ####
+    # Output files
     report_file_links = []
     print('Uploading output files')
 

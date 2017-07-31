@@ -5,9 +5,7 @@ import tempfile
 import pipes
 import dxpy
 import glob
-from shutil import rmtree
 from platform import python_version
-from contextlib import contextmanager
 
 
 class args_fake():
@@ -18,9 +16,11 @@ class args_fake():
         self.version = version
 
 
-def run_cmd_arr(arr_cmd):
+def run_cmd_arr(arr_cmd, output=False):
     print(" ".join([pipes.quote(a) for a in arr_cmd]))
-    subprocess.check_call(arr_cmd)
+    call = subprocess.check_output if output else subprocess.check_call
+    out = call(arr_cmd)
+    return out if output else None
 
 
 def get_file_list(output_file, resources_to_ignore):
@@ -28,7 +28,7 @@ def get_file_list(output_file, resources_to_ignore):
     This method find all the files in the system and writes it to the output file
     """
     tmp_dir = os.path.dirname(output_file) + "*"
-    cmd = ["sudo", "find", "/", "-path", "'/reference_data*'", "-or", "-path", "'/miniconda*'"]
+    cmd = ["sudo", "find", "/", "-or", "-path", "'/miniconda*'"]
     print("code.py: find cmd: " + " ".join(cmd))
 
     env = os.environ.copy()
@@ -63,65 +63,6 @@ def get_system_snapshot(output_file_path, ignore_files):
     with open(output_file_path, 'w') as output_file_handle:
         proc = subprocess.Popen(['sort', tmp_file_path], stdout=output_file_handle)
         proc.communicate()
-
-
-def copy_platform_folder_to_local(src_proj, src_proj_fld=None, dest_fld_prefix=None, exclude_func=None):
-    """Copies folder from src_proj to target_proj under target_proj_fld_prefix
-
-    Args:
-            src_proj_fld: Source folder to copy from. If None, project root is assumed.
-            dest_fld_prefix: Prefix to prepend to copied folders.
-                               Defaults {project}/ on local
-            exclude_func: func that is passed the describe results of a dxobject and returns a boolean.
-                True - file is not copied, False - File is copied over.
-    """
-    def download_to_local(file_id, file_dxpath, file_name):
-        file_dir = os.path.join(prefix, file_dxpath.strip('/'))
-        if not os.path.exists(file_dir):
-            os.makedirs(file_dir)
-        file_download_path = os.path.join(file_dir, file_name)
-        if os.path.isfile(file_download_path):
-            print('Found {fn} at {fpath}'.format(
-                fn=file_name, fpath=file_download_path))
-            return
-        print('downloading {fn} to {fdir}'.format(
-            fn=file_name, fdir=file_dir))
-        dxpy.download_dxfile(file_id, file_download_path)
-
-    proj_name = dxpy.DXProject(src_proj).name
-    prefix = proj_name if dest_fld_prefix is None else dest_fld_prefix
-
-    print('Searching {fld} in project {proj}'.format(
-        fld=src_proj_fld if src_proj_fld else 'root', proj=proj_name))
-    file_describes = dxpy.find_data_objects(
-        classname='file', state='closed', visibility='visible',
-        project=src_proj, folder=src_proj_fld, describe=True)
-
-    for file_describe in file_describes:
-        if exclude_func is not None and exclude_func(file_describe):
-            continue
-        download_to_local(
-            file_id=file_describe['id'],
-            file_dxpath=file_describe['describe']['folder'],
-            file_name=file_describe['describe']['name'])
-
-
-@contextmanager
-def dream_chr21_test():
-    #TODO: download and untar references instead
-    dream_dir = os.path.join('/', 'dream_chr21')
-    reference_dir = os.path.join('/', 'reference_data')
-    copy_platform_folder_to_local(
-        src_proj=os.environ['DX_PROJECT_CONTEXT_ID'],
-        src_proj_fld=dream_dir,
-        dest_fld_prefix='/')
-    copy_platform_folder_to_local(
-        src_proj=os.environ['DX_PROJECT_CONTEXT_ID'],
-        src_proj_fld=reference_dir,
-        dest_fld_prefix='/')
-    yield dream_dir
-    rmtree(dream_dir)
-    rmtree(reference_dir)
 
 
 def replace_in_file(fpath, url_mapping):
@@ -208,34 +149,38 @@ def main(**kwargs):
     run_cmd_arr([conda_cmd, 'create', '-y', '-q', '-n', 'ngs_reporting', '-c', 'vladsaveliev', '-c', 'bioconda', '-c', 'r', '-c',
                  'conda-forge', 'python={py_ver}'.format(py_ver=py_ver), 'ngs_reporting'])
 
-    # Run Test in Home
+    # Run Test
     os.chdir(os.path.expanduser('~'))
     print("Preparing Test Suite")
     run_cmd_arr(['git', 'clone', 'https://github.com/vladsaveliev/NGS_Reporting_TestData'])
     os.environ['PATH'] += os.pathsep + '/miniconda/envs/ngs_reporting/bin' + os.pathsep + '/miniconda/bin'
     os.environ['CONDA_DEFAULT_ENV'] = 'ngs_reporting'
 
-    test_results = []
-    with dream_chr21_test() as dream_dir:
-        final_dir = os.path.join(dream_dir, 'final')
-        sys_yaml = '/reference_data/system_info_DNAnexus.yaml'
-        postproc_cmdl = ['bcbio_postproc', '--sys-cfg', sys_yaml, final_dir]
-        run_cmd_arr(postproc_cmdl)
-        print('Uploading Test reports for manual Verification')
-        test_results = output_test_files(final_dir)
+    dream_dir = os.path.join('/', 'dream_chr21')
+    final_dir = os.path.join(dream_dir, 'final')
+    sys_yaml = '/reference_data/system_info_DNAnexus.yaml'
+    postproc_cmdl = ['bcbio_postproc', '--sys-cfg', sys_yaml, final_dir]
+    run_cmd_arr(postproc_cmdl)
+    print('Uploading Test reports for manual Verification')
+    test_results = output_test_files(final_dir)
 
     print("Creating Asset")
-
     # Create asset
     asset_name = "ngs_reporting_asset"
     asset_title = "NGS reporting Asset"
     description = "AZ post-processing suite for https://github.com/chapmanb/bcbio-nextgen: mutation and coverage prioritisation, visualisation, reporting and exposing.\nConda command: {conda_cmd}\nActivate ngs_reporting environment: /miniconda/bin/conda activate ngs_reporting".format(conda_cmd=conda_cmd)
     asset_version = "0.0.2"  # Get proper version info, probably from conda
-    run_cmd_arr(["create-asset", "--name", asset_name, "--title", asset_title, "--description", description, "--version", asset_version])
+    create_output = run_cmd_arr(
+        ["create-asset", "--name", asset_name, "--title", asset_title, "--description", description, "--version", asset_version],
+        output=True)
 
     # Output test results
     print('Asset created, be sure to manually review test results')
-    job_proj = dxpy.DXProject(dxpy.WORKSPACE_ID)
-    job_proj.move("/dream_chr21", destination="/dream_chr21_asettestresult")
+    record_id = create_output.split('\n')[-2]
+    job_proj = dxpy.DXContainer(dxpy.WORKSPACE_ID)
+    job_proj.new_folder(folder="/asset_creation_test_results")
+    job_proj.move_folder(folder="/dream_chr21", destination="/asset_creation_test_results")
 
-    return {'test_report_files': test_results}
+    return {
+        'test_report_files': test_results,
+        'asset_object': dxpy.dxlink(record_id)}

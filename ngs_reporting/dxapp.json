@@ -28,21 +28,12 @@
     }
   ],
   "runSpec": {
-    "bundledDepends": [
-      {
-        "name": "ngs_reporting_asset.tar.gz",
-        "id": {
-          "$dnanexus_link": "file-F5gXB780vbKBkFkfGfKKq23y"
+    "assetDepends": [
+        {
+        "name":"ngs_reporting_asset",
+        "id":"record-F5zGXzQ02PGZKVQ48KVbgjZj"
         }
-      }
     ],
-    "systemRequirementsByRegion": {
-      "aws:us-east-1": {
-        "*": {
-          "instanceType": "mem1_ssd1_x4"
-        }
-      }
-    },
     "systemRequirements": {
       "*": {
         "instanceType": "mem1_ssd1_x4"
@@ -57,10 +48,5 @@
       }
     },
     "distribution": "Ubuntu"
-  },
-  "access": {
-    "project": "CONTRIBUTE",
-    "allProjects": "VIEW",
-    "network": ["*"]
   }
 }
