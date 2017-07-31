@@ -33,10 +33,10 @@ def download_job_inputs(input_dict):
         if type(inp_val) is not dict or '$dnanexus_link' not in inp_val:
             return
         dx_id = inp_val['$dnanexus_link']
-        for reg_obj, dxmatch in PATTERN_MAPPING.iteritems():
+        for reg_obj, dxmatch in PATTERN_MAPPING.items():
             if reg_obj.match(dx_id):
                 return dxmatch(dx_id)
-    for inp_name, val in input_dict.iteritems():
+    for inp_name, val in input_dict.items():
         f_dx = create_dx_data_obj(val)
         print("f_dx: " + str(f_dx))
         if f_dx is not None:
@@ -55,7 +55,7 @@ def get_opts(updated_input_dict):
         # 'sys_info_yaml': '--sys-cfg {param}',
     }
     cmd_opt = []
-    for inp, val in updated_input_dict.iteritems():
+    for inp, val in updated_input_dict.items():
         opt_str = OPT_CMD.get(inp)
         if opt_str is None:
             continue
@@ -152,7 +152,7 @@ def main(**job_inputs):
         print("final_dir " + final_dir + ' is not absolute')
         final_dir = '/dream_chr21/final'  # test data
     sample_section = conf_d["details"][0]["algorithm"]
-    bed_files = [v for k, v in sample_section.iteritems() if k in ['variant_regions', 'sv_regions', 'coverage']]
+    bed_files = [v for k, v in sample_section.items() if k in ['variant_regions', 'sv_regions', 'coverage']]
     for bed_file in bed_files:
         print("Uploading BED file " + bed_file)
         if not bed_file.startswith('/'):
