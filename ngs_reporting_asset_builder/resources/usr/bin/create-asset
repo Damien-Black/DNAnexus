@@ -46,7 +46,7 @@ def get_file_list(output_file, resources_to_ignore):
             try:
                 mtime = str(os.path.getmtime(file_name))
             except OSError as os_err:
-                print os_err
+                print(os_err)
                 mtime = ''
             # file_name should not have special characters
             bfile.write(file_name + "\t" + str(mtime) + '\n')
@@ -70,7 +70,7 @@ def get_file_diffs(first_file, second_file, diff_file):
             line = line.rstrip()
             file_name = '\t'.join(line.split('\t')[:-1])
             bfile.write(file_name + '\n')
-            print file_name
+            print(file_name)
     ps_pipe.stdout.close()
 
 def get_parser():
@@ -100,8 +100,8 @@ def main():
 
     before_file_list_path = os.path.join(tempfile.gettempdir(), "before-sorted.txt")
     after_file_list_path = os.path.join(tempfile.gettempdir(), "after-sorted.txt")
-    print("create-asset before_file_list_path: "+ before_file_list_path)
-    print("create-asset after_file_list_path: "+ after_file_list_path)
+    print("create-asset before_file_list_path: " + before_file_list_path)
+    print("create-asset after_file_list_path: " + after_file_list_path)
     get_system_snapshot(after_file_list_path, [])
 
     diff_file_path = os.path.join(tempfile.gettempdir(), "diff.txt")

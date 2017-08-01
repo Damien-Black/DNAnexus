@@ -28,7 +28,7 @@ def get_file_list(output_file, resources_to_ignore):
     This method find all the files in the system and writes it to the output file
     """
     tmp_dir = os.path.dirname(output_file) + "*"
-    cmd = ["sudo", "find", "/", "-or", "-path", "'/miniconda*'"]
+    cmd = ["sudo", "find", "/", "-path", "'/miniconda*'"]
     print("code.py: find cmd: " + " ".join(cmd))
 
     env = os.environ.copy()
